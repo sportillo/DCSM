@@ -11,7 +11,7 @@
 #define PORTNUM           50007           // UDP port
 #define DEBUG_PORT        50007
 #define DELAY_BETWEEN_SCANS       (5000)
-#define SEND_UDP_RESPONSE
+//#define SEND_UDP_RESPONSE
 //#define STA_INTERFACE
 
 #ifdef STA_INTERFACE
@@ -46,7 +46,7 @@ typedef struct{
  ******************************************************/
 
 static wiced_result_t process_received_udp_packet();
-static wiced_result_t send_udp_response (char* buffer, uint16_t buffer_length, wiced_ip_address_t ip_addr, uint32_t port);
+//static wiced_result_t send_udp_response (char* buffer, uint16_t buffer_length, wiced_ip_address_t ip_addr, uint32_t port);
 static wiced_result_t udp_printf (char* buffer);
 static wiced_result_t publish_service();
 
@@ -54,10 +54,10 @@ static void wifi_scan();
 wiced_result_t scan_result_handler( wiced_scan_handler_result_t* malloced_scan_result );
 static void udp_print_scan_result( wiced_scan_result_t* record );
 
-
 static wiced_ip_address_t get_broadcast_address();
 extern wiced_result_t wiced_ip_up( wiced_interface_t interface, wiced_network_config_t config, const wiced_ip_setting_t* ip_settings );
 static void connection_callback();
+//static network* add_network(char* ssid, char* passphrase);
 
 /******************************************************
  *               Variables Definitions
@@ -76,10 +76,9 @@ wiced_ip_address_t  ip_interface_address;
 wiced_ip_address_t  ip_interface_netmask;
 wiced_ip_address_t  ip_interface_broadcast;
 char ip_descriptor[16];
-
+char debug_message[200];
 static int record_count;
 static wiced_time_t scan_start_time;
-
 network* infostrada;
 
 
@@ -92,14 +91,13 @@ void application_start(void)
     /* Initialise the device and WICED framework */
     wiced_init( );
 
-    infostrada = malloc(sizeof(network));
-    infostrada->ssid = "InfostradaWiFi-f668f7";
-    infostrada->passphrase = "timavo10d";
 
 #ifndef STA_INTERFACE
     wiced_network_up( WICED_AP_INTERFACE, WICED_USE_INTERNAL_DHCP_SERVER, &device_init_ip_settings );
+
     connection_callback();
 #else
+    infostrada = add_network("InfostradaWiFi-f668f7", "timavo10d");
     wifi_scan();
 #endif
 }
@@ -118,6 +116,7 @@ static void connection_callback(){
     {
         WPRINT_APP_INFO(("UDP socket creation failed\r\n"));
     }
+
     udp_printf("CONNECTED");
     uint32_t bro_v4 = GET_IPV4_ADDRESS(ip_interface_broadcast);
     sprintf(ip_descriptor, "Broadcast: %d.%d.%d.%d",(unsigned int)((bro_v4 >> 24) & 0xFF),
@@ -172,18 +171,24 @@ wiced_result_t process_received_udp_packet()
 
 #ifdef SEND_UDP_RESPONSE
 		/* Echo the received data to the sender */
-		send_udp_response(rx_data, rx_data_length, udp_src_ip_addr, PORTNUM);
-		udp_printf(rx_data);
+		//send_udp_response(rx_data, rx_data_length, udp_src_ip_addr, PORTNUM);
+
 #endif
+
 		if(strcmp(rx_data, "scan") == 0) wifi_scan();
 
 		else if(strcmp(rx_data, "ifconfig") == 0){
 		    uint32_t ipv4 = GET_IPV4_ADDRESS(ip_interface_address);
-		    sprintf(ip_descriptor, "%d.%d.%d.%d",(unsigned int)((ipv4 >> 24) & 0xFF),
+		    sprintf(debug_message, "IP: %d.%d.%d.%d",(unsigned int)((ipv4 >> 24) & 0xFF),
 		            (unsigned int)((ipv4 >> 16) & 0xFF),
 		            (unsigned int)((ipv4 >>  8) & 0xFF),
 		            (unsigned int)((ipv4 >>  0) & 0xFF));
-		    udp_printf(ip_descriptor);
+		    udp_printf(debug_message);
+		}
+
+		else {
+	        sprintf(debug_message, "Acc: %d | Vel: %d", ntohs(rx_data[0]), ntohs(rx_data[2]));
+		    udp_printf(debug_message);
 		}
 
 		/* Delete the received packet, it is no longer needed */
@@ -234,7 +239,7 @@ static wiced_result_t udp_printf (char* buffer)
     return WICED_SUCCESS;
 }
 
-
+#ifdef SEND_UDP_RESPONSE
 static wiced_result_t send_udp_response (char* buffer, uint16_t buffer_length, wiced_ip_address_t ip_addr, uint32_t port)
 {
 	wiced_packet_t*          packet;
@@ -274,6 +279,7 @@ static wiced_result_t send_udp_response (char* buffer, uint16_t buffer_length, w
 
 	return WICED_SUCCESS;
 }
+#endif
 
 static wiced_result_t publish_service(){
 
@@ -332,20 +338,20 @@ wiced_result_t scan_result_handler( wiced_scan_handler_result_t* malloced_scan_r
 
 static void udp_print_scan_result( wiced_scan_result_t* record )
 {
-    char buffer[300];
-    sprintf(buffer, "%5s ", ( record->bss_type == WICED_BSS_TYPE_ADHOC ) ? "Adhoc" : "Infra" );
-    sprintf(buffer + strlen(buffer), "%02X:%02X:%02X:%02X:%02X:%02X ", record->BSSID.octet[0], record->BSSID.octet[1], record->BSSID.octet[2], record->BSSID.octet[3], record->BSSID.octet[4], record->BSSID.octet[5] );
-    sprintf(buffer + strlen(buffer), " %d ", record->signal_strength );
+    char buffer_result[300];
+    sprintf(buffer_result, "%5s ", ( record->bss_type == WICED_BSS_TYPE_ADHOC ) ? "Adhoc" : "Infra" );
+    sprintf(buffer_result + strlen(buffer_result), "%02X:%02X:%02X:%02X:%02X:%02X ", record->BSSID.octet[0], record->BSSID.octet[1], record->BSSID.octet[2], record->BSSID.octet[3], record->BSSID.octet[4], record->BSSID.octet[5] );
+    sprintf(buffer_result + strlen(buffer_result), " %d ", record->signal_strength );
     if ( record->max_data_rate < 100000 )
     {
-        sprintf(buffer + strlen(buffer), " %.1f ", (float) record->max_data_rate / 1000.0 );
+        sprintf(buffer_result + strlen(buffer_result), " %.1f ", (float) record->max_data_rate / 1000.0 );
     }
     else
     {
-        sprintf(buffer + strlen(buffer), "%.1f ", (float) record->max_data_rate / 1000.0 );
+        sprintf(buffer_result + strlen(buffer_result), "%.1f ", (float) record->max_data_rate / 1000.0 );
     }
-    sprintf(buffer + strlen(buffer), " %2d  ", record->channel );
-    sprintf(buffer + strlen(buffer), "%-10s ", ( record->security == WICED_SECURITY_OPEN ) ? "Open" :
+    sprintf(buffer_result + strlen(buffer_result), " %2d  ", record->channel );
+    sprintf(buffer_result + strlen(buffer_result), "%-10s ", ( record->security == WICED_SECURITY_OPEN ) ? "Open" :
                                  ( record->security == WICED_SECURITY_WEP_PSK ) ? "WEP" :
                                  ( record->security == WICED_SECURITY_WPA_TKIP_PSK ) ? "WPA TKIP" :
                                  ( record->security == WICED_SECURITY_WPA_AES_PSK ) ? "WPA AES" :
@@ -353,8 +359,8 @@ static void udp_print_scan_result( wiced_scan_result_t* record )
                                  ( record->security == WICED_SECURITY_WPA2_TKIP_PSK ) ? "WPA2 TKIP" :
                                  ( record->security == WICED_SECURITY_WPA2_MIXED_PSK ) ? "WPA2 Mixed" :
                                  "Unknown" );
-    sprintf(buffer + strlen(buffer), " %-32s ", record->SSID.val );
-    udp_printf(buffer);
+    sprintf(buffer_result + strlen(buffer_result), " %-32s ", record->SSID.val );
+    udp_printf(buffer_result);
 }
 
 static wiced_ip_address_t get_broadcast_address(){
@@ -366,3 +372,12 @@ static wiced_ip_address_t get_broadcast_address(){
     const wiced_ip_address_t INITIALISER_IPV4_ADDRESS( ip_broadcast, MAKE_IPV4_ADDRESS((unsigned int)((broadcast >> 24) & 0xFF),(unsigned int)((broadcast >> 16) & 0xFF),(unsigned int)((broadcast >>  8) & 0xFF),(unsigned int)((broadcast >>  0) & 0xFF)));
     return ip_broadcast;
 }
+
+/*static network* add_network(char* ssid, char* passphrase){
+    network* n = malloc(sizeof(network));
+    n->ssid = malloc(strlen(ssid) + 1);
+    strcpy(n->ssid, ssid);
+    n->passphrase = malloc(strlen(passphrase) + 1);
+    strcpy(n->passphrase, passphrase);
+    return n;
+}*/

@@ -30,7 +30,7 @@
 #define CONFIG_AP_CHANNEL    1
 
 /* This is the soft AP available for normal operation (if used)*/
-#define SOFT_AP_SSID         "WICED UDP Receive App"
+#define SOFT_AP_SSID         "WICED UDP"
 #define SOFT_AP_PASSPHRASE   "12345678"
 #define SOFT_AP_SECURITY     WICED_SECURITY_OPEN  /* WICED_SECURITY_WPA2_AES_PSK */
 #define SOFT_AP_CHANNEL      1
