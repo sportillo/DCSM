@@ -79,6 +79,7 @@ wiced_ip_address_t  ip_interface_netmask;
 wiced_ip_address_t  ip_interface_broadcast;
 char ip_descriptor[16];
 char debug_message[200];
+uint16_t acc, vel;
 //network ntw = {"Ospiti", "1123581321"};
 
 
@@ -97,9 +98,10 @@ void application_start(void)
 
     connection_callback();
 #else
+    /*avoid wiced_network_up in case of automatic connection*/
+    //wifi_scan();
     wiced_network_up( WICED_STA_INTERFACE, WICED_USE_EXTERNAL_DHCP_SERVER, NULL );
     connection_callback();
-    //wifi_scan();
 #endif
 }
 
@@ -109,8 +111,6 @@ static void connection_callback(){
     wiced_ip_get_netmask(ACTIVE_INTERFACE, &ip_interface_netmask);
 
     ip_interface_broadcast = get_broadcast_address();
-
-   //ip_addr_broadcast ???? Check if it's the same
 
     /* Create UDP socket */
     if (wiced_udp_create_socket(&udp_socket, PORTNUM, ACTIVE_INTERFACE) != WICED_SUCCESS)
@@ -180,7 +180,7 @@ wiced_result_t process_received_udp_packet()
 		}
 
 		else {
-		    uint16_t acc, vel;
+
 
 		    acc = ((uint16_t *) rx_data)[0];
 		    vel = ((uint16_t *) rx_data)[1];
@@ -370,14 +370,3 @@ static wiced_ip_address_t get_broadcast_address(){
     const wiced_ip_address_t INITIALISER_IPV4_ADDRESS( ip_broadcast, MAKE_IPV4_ADDRESS((unsigned int)((broadcast >> 24) & 0xFF),(unsigned int)((broadcast >> 16) & 0xFF),(unsigned int)((broadcast >>  8) & 0xFF),(unsigned int)((broadcast >>  0) & 0xFF)));
     return ip_broadcast;
 }
-
-#ifdef STA_INTERFACE
-/*static network* add_network(char* ssid, char* passphrase){
-    network* n = malloc(sizeof(network));
-    n->ssid = malloc(strlen(ssid) + 1);
-    strcpy(n->ssid, ssid);
-    n->passphrase = malloc(strlen(passphrase) + 1);
-    strcpy(n->passphrase, passphrase);
-    return n;
-}*/
-#endif
