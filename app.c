@@ -1,5 +1,7 @@
 #include "wiced.h"
 #include "gedday.h"
+#include <inttypes.h>
+
 
 /* Commit test */
 
@@ -38,8 +40,8 @@
  *                    Structures
  ******************************************************/
 typedef struct{
-    char* ssid;
-    char* passphrase;
+    char ssid[50];
+    char passphrase[50];
 } network;
 /******************************************************
  *               Function Declarations
@@ -77,9 +79,7 @@ wiced_ip_address_t  ip_interface_netmask;
 wiced_ip_address_t  ip_interface_broadcast;
 char ip_descriptor[16];
 char debug_message[200];
-static int record_count;
-static wiced_time_t scan_start_time;
-network* infostrada;
+//network ntw = {"Ospiti", "1123581321"};
 
 
 /******************************************************
@@ -97,8 +97,9 @@ void application_start(void)
 
     connection_callback();
 #else
-    infostrada = add_network("InfostradaWiFi-f668f7", "timavo10d");
-    wifi_scan();
+    wiced_network_up( WICED_STA_INTERFACE, WICED_USE_EXTERNAL_DHCP_SERVER, NULL );
+    connection_callback();
+    //wifi_scan();
 #endif
 }
 
@@ -118,19 +119,11 @@ static void connection_callback(){
     }
 
     udp_printf("CONNECTED");
-    uint32_t bro_v4 = GET_IPV4_ADDRESS(ip_interface_broadcast);
-    sprintf(ip_descriptor, "Broadcast: %d.%d.%d.%d",(unsigned int)((bro_v4 >> 24) & 0xFF),
-            (unsigned int)((bro_v4 >> 16) & 0xFF),
-            (unsigned int)((bro_v4 >>  8) & 0xFF),
-            (unsigned int)((bro_v4 >>  0) & 0xFF));
-
-
-    udp_printf(ip_descriptor);
     publish_service();
     udp_printf("Service Published.");
 
     /* Register a function to process received UDP packets */
-    wiced_rtos_register_timed_event( &process_udp_rx_event, WICED_NETWORKING_WORKER_THREAD, &process_received_udp_packet, 10, 0 );
+    wiced_rtos_register_timed_event( &process_udp_rx_event, WICED_NETWORKING_WORKER_THREAD, &process_received_udp_packet, 50, 0 );
 
     udp_printf("Waiting for UDP packets ...");
 }
@@ -187,7 +180,14 @@ wiced_result_t process_received_udp_packet()
 		}
 
 		else {
-	        sprintf(debug_message, "Acc: %d | Vel: %d", ntohs(rx_data[0]), ntohs(rx_data[2]));
+		    uint16_t acc, vel;
+
+		    acc = ((uint16_t *) rx_data)[0];
+		    vel = ((uint16_t *) rx_data)[1];
+
+	        sprintf(debug_message, "[%d bytes] RAW: %4s | Acc: %" PRIu16 " | Vel: %" PRIu16,
+	                rx_data_length, rx_data, ntohs(acc), ntohs(vel)
+	                );
 		    udp_printf(debug_message);
 		}
 
@@ -298,11 +298,9 @@ static wiced_result_t publish_service(){
 }
 
 static void wifi_scan(){
-    record_count = 0;
     udp_printf("Waiting for scan results...");
     udp_printf("Type  BSSID             RSSI  Rate Chan Security    SSID");
     udp_printf("----------------------------------------------------------------------------------------------");
-    wiced_time_get_time(&scan_start_time);
     wiced_wifi_scan_networks(scan_result_handler, NULL );
 }
 
@@ -312,19 +310,19 @@ wiced_result_t scan_result_handler( wiced_scan_handler_result_t* malloced_scan_r
 
     if (malloced_scan_result->scan_complete != WICED_TRUE)
     {
+        udp_printf("New network found!");
         wiced_scan_result_t* record = &malloced_scan_result->ap_details;
         record->SSID.val[record->SSID.len] = 0; /* Ensure the SSID is null terminated */
 
-        WPRINT_APP_INFO( ( "%3d ", record_count ) );
         udp_print_scan_result(record);
 #ifdef STA_INTERFACE
-        if(strcmp((char*)record->SSID.val, infostrada->ssid) == 0){
-            if(wiced_wifi_join_specific(record, (uint8_t*)infostrada->passphrase, strlen(infostrada->passphrase), NULL) == WICED_SUCCESS)
+        //check strlen(ssid.val)
+        if(strcmp((char*)record->SSID.val, "Ospiti") == 0){
+            if(wiced_wifi_join_specific(record, (uint8_t*)"1123581321", 10, NULL) == WICED_SUCCESS)
                 if(wiced_ip_up( WICED_STA_INTERFACE, WICED_USE_EXTERNAL_DHCP_SERVER, NULL ) == WICED_SUCCESS)
                     connection_callback();
         }
 #endif
-        ++record_count;
     }
     else
     {
@@ -373,6 +371,7 @@ static wiced_ip_address_t get_broadcast_address(){
     return ip_broadcast;
 }
 
+#ifdef STA_INTERFACE
 /*static network* add_network(char* ssid, char* passphrase){
     network* n = malloc(sizeof(network));
     n->ssid = malloc(strlen(ssid) + 1);
@@ -381,3 +380,4 @@ static wiced_ip_address_t get_broadcast_address(){
     strcpy(n->passphrase, passphrase);
     return n;
 }*/
+#endif
