@@ -1,4 +1,5 @@
 #include "wiced.h"
+#include "wiced_dct.h"
 #include "gedday.h"
 
 #include <inttypes.h>
@@ -7,15 +8,19 @@
  *                      Macros
  ******************************************************/
 
-#define RX_WAIT_TIMEOUT     1*SECONDS
+#define RX_WAIT_TIMEOUT     50*MILLISECONDS
 
 #define DATA_PORT           50007
 #define DEBUG_PORT          50008
 
-#define DELAY_BETWEEN_SCANS 5*SECONDS
+#define MAX_SSID_LEN        32
+#define MAX_PASSPHRASE_LEN  64
 
-//#define STA_INTERFACE
+#define STA_INTERFACE
+
+#ifndef DEBUG
 #define DEBUG
+#endif
 
 #ifdef STA_INTERFACE
 #define ACTIVE_INTERFACE WICED_STA_INTERFACE
@@ -40,8 +45,8 @@
  ******************************************************/
 
 typedef struct {
-    const char* ssid;
-    const char* passphrase;
+    char* ssid;
+    char* passphrase;
 } network;
 
 /******************************************************
@@ -49,13 +54,11 @@ typedef struct {
  ******************************************************/
 
 static wiced_result_t process_received_udp_packet();
-//static wiced_result_t send_udp_response (char* buffer, uint16_t buffer_length, wiced_ip_address_t ip_addr, uint32_t port);
 static wiced_result_t udp_printf (char* buffer);
 static wiced_result_t publish_service();
 
-static void wifi_scan();
 wiced_result_t scan_result_handler( wiced_scan_handler_result_t* malloced_scan_result );
-static void udp_print_scan_result( wiced_scan_result_t* record );
+//static void udp_print_scan_result( wiced_scan_result_t* record );
 
 static wiced_ip_address_t get_broadcast_address();
 extern wiced_result_t wiced_ip_up( wiced_interface_t interface, wiced_network_config_t config, const wiced_ip_setting_t* ip_settings );
@@ -65,20 +68,26 @@ static void connection_established();
  *               Variables Definitions
  ******************************************************/
 
+#ifndef STA_INTERFACE
 static const wiced_ip_setting_t device_init_ip_settings =
 {
     INITIALISER_IPV4_ADDRESS( .ip_address, MAKE_IPV4_ADDRESS(192,168,  2,  1) ),
     INITIALISER_IPV4_ADDRESS( .netmask,    MAKE_IPV4_ADDRESS(255,255,255,  0) ),
     INITIALISER_IPV4_ADDRESS( .gateway,    MAKE_IPV4_ADDRESS(192,168,  2,  1) ),
 };
+#endif
+
+static platform_dct_wifi_config_t wifi_config_dct_local;
 
 static wiced_timed_event_t process_udp_rx_event;
 static wiced_udp_socket_t  udp_data_socket;
 static wiced_udp_socket_t  udp_debug_socket;
 
-wiced_ip_address_t  ip_interface_address;
-wiced_ip_address_t  ip_interface_netmask;
-wiced_ip_address_t  ip_interface_broadcast;
+static wiced_ip_address_t  ip_interface_address;
+static wiced_ip_address_t  ip_interface_netmask;
+static wiced_ip_address_t  ip_interface_broadcast;
+
+static wiced_bool_t wifi_connected = WICED_FALSE;
 
 char ip_descriptor[16];
 
@@ -92,7 +101,7 @@ uint16_t prev_acc, prev_vel;
 const network known_networks[] =
 {
     /* Dummy network */
-    { .ssid = "", .passphrase = "" }
+    { .ssid = "INSERT_SSID", .passphrase = "INSERT_PASSPHRASE" }
 };
 
 /******************************************************
@@ -108,26 +117,25 @@ void application_start(void)
     /* TODO: Change dummy duty cycle to 0.0 */
     wiced_gpio_init(WICED_GPIO_8, OUTPUT_PUSH_PULL);
     wiced_gpio_init(WICED_GPIO_9, OUTPUT_PUSH_PULL);
-    wiced_pwm_init(WICED_PWM_3, 20000, 30.0);
+    //wiced_pwm_init(WICED_PWM_3, 20000, 30.0);
 
     /* TODO: Remove (for testing purposes) */
-    wiced_gpio_output_high(WICED_GPIO_8);
+    wiced_gpio_output_low(WICED_GPIO_8);
     wiced_gpio_output_low(WICED_GPIO_9);
-    wiced_pwm_start(WICED_PWM_3);
+    //wiced_pwm_start(WICED_PWM_3);
 
 #ifndef STA_INTERFACE
     wiced_network_up( WICED_AP_INTERFACE, WICED_USE_INTERNAL_DHCP_SERVER, &device_init_ip_settings );
     connection_established();
 #else
-    /*avoid wiced_network_up in case of automatic connection*/
-    //wifi_scan();
-    wiced_network_up( WICED_STA_INTERFACE, WICED_USE_EXTERNAL_DHCP_SERVER, NULL );
-    connection_established();
+    wiced_wifi_scan_networks(scan_result_handler, NULL);
 #endif
 
 }
 
 static void connection_established(){
+
+    wifi_connected = WICED_TRUE;
 
     wiced_ip_get_ipv4_address(ACTIVE_INTERFACE, &ip_interface_address);
     wiced_ip_get_netmask(ACTIVE_INTERFACE, &ip_interface_netmask);
@@ -140,12 +148,20 @@ static void connection_established(){
         WPRINT_APP_INFO(("UDP socket creation failed\r\n"));
     }
 
-    udp_printf("CONNECTED");
+    udp_printf("Connected.");
+
     publish_service();
     udp_printf("Service Published.");
 
     /* Register a function to process received UDP packets */
-    wiced_rtos_register_timed_event( &process_udp_rx_event, WICED_NETWORKING_WORKER_THREAD, &process_received_udp_packet, 50, 0 );
+    wiced_rtos_register_timed_event( &process_udp_rx_event,
+                                     WICED_NETWORKING_WORKER_THREAD,
+                                     &process_received_udp_packet,
+                                     RX_WAIT_TIMEOUT,
+                                     0
+                                   );
+
+    wiced_gpio_output_high(WICED_GPIO_8);
 
     udp_printf("Waiting for UDP packets ...");
 }
@@ -161,18 +177,33 @@ wiced_result_t process_received_udp_packet()
     static uint16_t           udp_src_port;
 
     /* Wait for UDP packet */
-    wiced_result_t result = wiced_udp_receive(&udp_data_socket, &packet, RX_WAIT_TIMEOUT );
+    wiced_result_t result = wiced_udp_receive(&udp_data_socket, &packet, RX_WAIT_TIMEOUT);
+
     if ((result == WICED_ERROR) || (result == WICED_TIMEOUT))
     {
-    	; //WPRINT_APP_INFO(("Timeout waiting ...\r\n"));
+        //udp_printf("Timeout");
     }
     else
     {
+        wiced_gpio_output_low(WICED_GPIO_8);
+
+        udp_printf("Packet received");
+
     	/* Get info about the received UDP packet */
         wiced_udp_packet_get_info(packet, &udp_src_ip_addr, &udp_src_port);
 
         /* Extract the received data from the UDP packet */
         wiced_packet_get_data(packet, 0, (uint8_t**)&rx_data, &rx_data_length, &available_data_length);
+
+        if (rx_data_length == 0)
+        {
+            /* TODO: Prevents crashing */
+
+            /* Delete the received packet, it is no longer needed */
+            wiced_packet_delete(packet);
+
+            return WICED_SUCCESS;
+        }
 
         /* Null terminate the received data, just in case the sender didn't do this */
         rx_data[rx_data_length] = '\x0';
@@ -184,24 +215,25 @@ wiced_result_t process_received_udp_packet()
 																        (unsigned char) ( ( GET_IPV4_ADDRESS(udp_src_ip_addr) >>  0 ) & 0xff ),
 																        udp_src_port ) );
 
-#ifdef SEND_UDP_RESPONSE
-		/* Echo the received data to the sender */
-		//send_udp_response(rx_data, rx_data_length, udp_src_ip_addr, DATA_PORT);
-
-#endif
-
-		if(strcmp(rx_data, "scan") == 0) wifi_scan();
-
-		else if(strcmp(rx_data, "ifconfig") == 0){
+		if(rx_data_length >= 4 &&
+		   strncmp(rx_data, "scan", 4) == 0)
+		{
+		    wiced_wifi_scan_networks(scan_result_handler, NULL);
+		}
+		else if(rx_data_length >= 8 &&
+		        strncmp(rx_data, "ifconfig", 8) == 0)
+		{
 		    uint32_t ipv4 = GET_IPV4_ADDRESS(ip_interface_address);
+
 		    sprintf(debug_message, "IP: %d.%d.%d.%d",(unsigned int)((ipv4 >> 24) & 0xFF),
 		            (unsigned int)((ipv4 >> 16) & 0xFF),
 		            (unsigned int)((ipv4 >>  8) & 0xFF),
 		            (unsigned int)((ipv4 >>  0) & 0xFF));
+
 		    udp_printf(debug_message);
 		}
-
-		else {
+		else if (rx_data_length == 4)
+		{
 		    uint16_t curr_acc, curr_vel;
 
 		    curr_acc = ((uint16_t *) rx_data)[0];
@@ -221,7 +253,9 @@ wiced_result_t process_received_udp_packet()
 		/* Delete the received packet, it is no longer needed */
 		wiced_packet_delete(packet);
 
+        wiced_gpio_output_high(WICED_GPIO_8);
     }
+
 	return WICED_SUCCESS;
 }
 
@@ -234,7 +268,7 @@ static wiced_result_t udp_printf (char* buffer)
     uint16_t buffer_length = strlen(buffer);
 
     /* Create the UDP packet. Memory for the tx data is automatically allocated */
-    if (wiced_packet_create_udp(&udp_data_socket, buffer_length, &packet, (uint8_t**)&tx_data, &available_data_length) != WICED_SUCCESS)
+    if (wiced_packet_create_udp(&udp_debug_socket, buffer_length, &packet, (uint8_t**)&tx_data, &available_data_length) != WICED_SUCCESS)
     {
         WPRINT_APP_INFO(("UDP tx packet creation failed\r\n"));
         return WICED_ERROR;
@@ -248,7 +282,7 @@ static wiced_result_t udp_printf (char* buffer)
     wiced_packet_set_data_end(packet, (uint8_t*)tx_data + buffer_length);
 
     /* Send the UDP packet */
-    if (wiced_udp_send(&udp_data_socket, &ip_interface_broadcast, DEBUG_PORT, packet) != WICED_SUCCESS)
+    if (wiced_udp_send(&udp_debug_socket, &ip_interface_broadcast, DEBUG_PORT, packet) != WICED_SUCCESS)
     {
         WPRINT_APP_INFO(("UDP packet send failed\r\n"));
         wiced_packet_delete(packet);  /* Delete packet, since the send failed */
@@ -266,48 +300,6 @@ static wiced_result_t udp_printf (char* buffer)
     return WICED_SUCCESS;
 }
 
-#ifdef SEND_UDP_RESPONSE
-static wiced_result_t send_udp_response (char* buffer, uint16_t buffer_length, wiced_ip_address_t ip_addr, uint32_t port)
-{
-	wiced_packet_t*          packet;
-	char*                    tx_data;
-	uint16_t                 available_data_length;
-	const wiced_ip_address_t INITIALISER_IPV4_ADDRESS( target_ip_addr, GET_IPV4_ADDRESS(ip_addr) );
-
-	/* Create the UDP packet. Memory for the tx data is automatically allocated */
-    if (wiced_packet_create_udp(&udp_data_socket, buffer_length, &packet, (uint8_t**)&tx_data, &available_data_length) != WICED_SUCCESS)
-    {
-        WPRINT_APP_INFO(("UDP tx packet creation failed\r\n"));
-        return WICED_ERROR;
-	}
-
-    /* Copy buffer into tx_data which is located inside the UDP packet */
-	memcpy(tx_data, buffer, buffer_length+1);
-
-
-    /* Set the end of the data portion of the packet */
-    wiced_packet_set_data_end(packet, (uint8_t*)tx_data + buffer_length);
-
-    /* Send the UDP packet */
-    if (wiced_udp_send(&udp_data_socket, &target_ip_addr, port, packet) != WICED_SUCCESS)
-    {
-        WPRINT_APP_INFO(("UDP packet send failed\r\n"));
-        wiced_packet_delete(packet);  /* Delete packet, since the send failed */
-    }
-    else
-    {
-    	WPRINT_APP_INFO(("UDP Tx: \"echo: %s\"\r\n\r\n", tx_data));
-    }
-
-    /*
-     * NOTE : It is not necessary to delete the packet created above, the packet
-     *        will be automatically deleted *AFTER* it has been successfully sent
-     */
-
-	return WICED_SUCCESS;
-}
-#endif
-
 static wiced_result_t publish_service(){
 
     uint32_t ipv4 = GET_IPV4_ADDRESS(ip_interface_address);
@@ -324,36 +316,64 @@ static wiced_result_t publish_service(){
     return WICED_SUCCESS;
 }
 
-static void wifi_scan(){
-    udp_printf("Waiting for scan results...");
-    udp_printf("Type  BSSID             RSSI  Rate Chan Security    SSID");
-    udp_printf("----------------------------------------------------------------------------------------------");
-    wiced_wifi_scan_networks(scan_result_handler, NULL );
-}
-
 wiced_result_t scan_result_handler( wiced_scan_handler_result_t* malloced_scan_result )
 {
     malloc_transfer_to_curr_thread( malloced_scan_result );
 
+    if (wifi_connected == WICED_TRUE)
+    {
+        free (malloced_scan_result);
+        return WICED_SUCCESS;
+    }
+
     if (malloced_scan_result->scan_complete != WICED_TRUE)
     {
-        udp_printf("New network found!");
+        int i;
+
         wiced_scan_result_t* record = &malloced_scan_result->ap_details;
         record->SSID.val[record->SSID.len] = 0; /* Ensure the SSID is null terminated */
 
-        udp_print_scan_result(record);
-#ifdef STA_INTERFACE
-        //check strlen(ssid.val)
-        if(strcmp((char*)record->SSID.val, "Ospiti") == 0){
-            if(wiced_wifi_join_specific(record, (uint8_t*)"1123581321", 10, NULL) == WICED_SUCCESS)
-                if(wiced_ip_up( WICED_STA_INTERFACE, WICED_USE_EXTERNAL_DHCP_SERVER, NULL ) == WICED_SUCCESS)
+        for (i = 0; i < sizeof(known_networks) / sizeof(network); i++)
+        {
+            if (strcmp((char *)record->SSID.val, known_networks[i].ssid) == 0)
+            {
+                wiced_result_t result;
+
+                /* Read the Wi-Fi config from the DCT */
+                result = wiced_dct_read_wifi_config_section( &wifi_config_dct_local );
+                if ( result != WICED_SUCCESS )
+                {
+                    return result;
+                }
+
+                /* Write the new security settings into the config */
+                wifi_config_dct_local.stored_ap_list[0].details.SSID.len = strlen(known_networks[i].ssid);
+                strncpy((char*)&wifi_config_dct_local.stored_ap_list[0].details.SSID.val, known_networks[i].ssid, MAX_SSID_LEN);
+                wifi_config_dct_local.stored_ap_list[0].details.BSSID = record->BSSID;
+                wifi_config_dct_local.stored_ap_list[0].details.band = record->band;
+                wifi_config_dct_local.stored_ap_list[0].details.bss_type = record->bss_type;
+                wifi_config_dct_local.stored_ap_list[0].details.channel = record->channel;
+                wifi_config_dct_local.stored_ap_list[0].details.security = record->security;
+                memcpy((char*)wifi_config_dct_local.stored_ap_list[0].security_key, known_networks[i].passphrase, MAX_PASSPHRASE_LEN);
+                wifi_config_dct_local.stored_ap_list[0].security_key_length = strlen(known_networks[i].passphrase);
+
+                /* Write the modified config back into the DCT */
+                result = wiced_dct_write_wifi_config_section( (const platform_dct_wifi_config_t*)&wifi_config_dct_local );
+                if ( result != WICED_SUCCESS )
+                {
+                    return result;
+                }
+
+                if (wiced_network_up( WICED_STA_INTERFACE, WICED_USE_EXTERNAL_DHCP_SERVER, NULL ) == WICED_SUCCESS)
+                {
                     connection_established();
+                }
+            }
         }
-#endif
     }
     else
     {
-        udp_printf("Scan complete!");
+
     }
 
     free( malloced_scan_result );
@@ -361,6 +381,7 @@ wiced_result_t scan_result_handler( wiced_scan_handler_result_t* malloced_scan_r
     return WICED_SUCCESS;
 }
 
+/*
 static void udp_print_scan_result( wiced_scan_result_t* record )
 {
     char buffer_result[300];
@@ -387,6 +408,7 @@ static void udp_print_scan_result( wiced_scan_result_t* record )
     sprintf(buffer_result + strlen(buffer_result), " %-32s ", record->SSID.val );
     udp_printf(buffer_result);
 }
+*/
 
 static wiced_ip_address_t get_broadcast_address(){
 
@@ -394,6 +416,13 @@ static wiced_ip_address_t get_broadcast_address(){
     uint32_t address_ipv4 = GET_IPV4_ADDRESS(ip_interface_address);
     uint32_t broadcast = ~netmask_ipv4 | address_ipv4;
 
-    const wiced_ip_address_t INITIALISER_IPV4_ADDRESS( ip_broadcast, MAKE_IPV4_ADDRESS((unsigned int)((broadcast >> 24) & 0xFF),(unsigned int)((broadcast >> 16) & 0xFF),(unsigned int)((broadcast >>  8) & 0xFF),(unsigned int)((broadcast >>  0) & 0xFF)));
+    const wiced_ip_address_t INITIALISER_IPV4_ADDRESS( ip_broadcast,
+                             MAKE_IPV4_ADDRESS(
+                                 (unsigned int)((broadcast & 0xFF000000) >> 24),
+                                 (unsigned int)((broadcast & 0x00FF0000) >> 16),
+                                 (unsigned int)((broadcast & 0x0000FF00) >> 8),
+                                 (unsigned int)((broadcast & 0x000000FF) >> 0)
+                             ));
+
     return ip_broadcast;
 }

@@ -7,10 +7,14 @@ Python to send a UDP packet.
 """
 
 import socket
+import time
+import struct
 
 # Address information of the target (use a broadcast address)
-IPADDR = '192.168.2.255'
+IPADDR = '192.168.1.120'
 PORTNUM = 50007
+
+i = 0
 
 # Initialize the socket (SOCK_DGRAM specifies that this is UDP)
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
@@ -21,8 +25,9 @@ s.connect((IPADDR, PORTNUM))
 
 # Send the data
 while 1:
-	PACKETDATA = raw_input()
-	s.send(PACKETDATA)
+    s.send(struct.pack("I", i))
+    i = i+1
+    time.sleep(0.05)
 
 # Close the socket
 s.close()
