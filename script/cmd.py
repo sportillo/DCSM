@@ -9,7 +9,7 @@ Python to send a UDP packet.
 import socket
 
 # Address information of the target (use a broadcast address)
-IPADDR = '192.168.1.255'
+IPADDR = '192.168.2.255'
 PORTNUM = 50007
 
 # Initialize the socket (SOCK_DGRAM specifies that this is UDP)

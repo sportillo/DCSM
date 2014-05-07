@@ -1,9 +1,7 @@
 #include "wiced.h"
 #include "gedday.h"
+
 #include <inttypes.h>
-
-
-/* Commit test */
 
 /******************************************************
  *                      Macros
@@ -67,9 +65,9 @@ static void connection_callback();
 
 static const wiced_ip_setting_t device_init_ip_settings =
 {
-    INITIALISER_IPV4_ADDRESS( .ip_address, MAKE_IPV4_ADDRESS(192,168,  1,  1) ),
+    INITIALISER_IPV4_ADDRESS( .ip_address, MAKE_IPV4_ADDRESS(192,168,  2,  1) ),
     INITIALISER_IPV4_ADDRESS( .netmask,    MAKE_IPV4_ADDRESS(255,255,255,  0) ),
-    INITIALISER_IPV4_ADDRESS( .gateway,    MAKE_IPV4_ADDRESS(192,168,  1,  1) ),
+    INITIALISER_IPV4_ADDRESS( .gateway,    MAKE_IPV4_ADDRESS(192,168,  2,  1) ),
 };
 
 static wiced_timed_event_t process_udp_rx_event;
@@ -92,6 +90,14 @@ void application_start(void)
     /* Initialise the device and WICED framework */
     wiced_init( );
 
+    wiced_gpio_init(WICED_GPIO_8, OUTPUT_PUSH_PULL);
+    wiced_gpio_init(WICED_GPIO_9, OUTPUT_PUSH_PULL);
+
+    wiced_pwm_init(WICED_PWM_3, 20000, 0.0);
+
+    wiced_gpio_output_high(WICED_GPIO_8);
+    wiced_gpio_output_low(WICED_GPIO_9);
+    wiced_pwm_start(WICED_PWM_3);
 
 #ifndef STA_INTERFACE
     wiced_network_up( WICED_AP_INTERFACE, WICED_USE_INTERNAL_DHCP_SERVER, &device_init_ip_settings );
@@ -103,6 +109,7 @@ void application_start(void)
     wiced_network_up( WICED_STA_INTERFACE, WICED_USE_EXTERNAL_DHCP_SERVER, NULL );
     connection_callback();
 #endif
+
 }
 
 static void connection_callback(){
