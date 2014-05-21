@@ -11,7 +11,7 @@ import time
 import struct
 
 # Address information of the target (use a broadcast address)
-IPADDR = '192.168.1.120'
+IPADDR = '192.168.1.4'
 PORTNUM = 50007
 
 i = 0

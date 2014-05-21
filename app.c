@@ -16,7 +16,7 @@
 #define MAX_SSID_LEN        32
 #define MAX_PASSPHRASE_LEN  64
 
-#define STA_INTERFACE
+//#define STA_INTERFACE
 
 #ifndef DEBUG
 #define DEBUG
@@ -32,9 +32,100 @@
  *                    Constants
  ******************************************************/
 
+#define INA_L WICED_GPIO_8
+#define INB_L WICED_GPIO_9
+#define INA_R WICED_GPIO_10
+#define INB_R WICED_GPIO_11
+#define PWM_L WICED_PWM_6
+#define PWM_R WICED_PWM_3
+
 /******************************************************
  *                   Enumerations
  ******************************************************/
+
+/*
+SN8200x platform pin definitions ...
++--------------------------------------------------------------------------------------------------------+
+| Enum ID       |Pin |   Pin Name on    |    Module     | STM32| Peripheral  |    Board     | Peripheral  |
+|               | #  |      Module      |  GPIO Alias   | Port | Available   |  Connection  |   Alias     |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_1  | 5  | MICRO_WKUP       | WICED_GPIO_1  | A  0 | GPIO        | PWM_L        |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_2  | 6  | MICRO_ADC_IN1    | WICED_GPIO_2  | A  1 | GPIO        | PWM_R        |             |
+|               |    |                  |               |      | TIM2_CH2    |              |             |
+|               |    |                  |               |      | TIM5_CH2    |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_3  | 7  | MICRO_ADC_IN2    | WICED_GPIO_3  | A  2 | ADC123_IN2  | CS_R         |             |
+|               |    |                  |               |      | GPIO        |              |             |
+|               |    |                  |               |      | TIM2_CH3    |              |             |
+|               |    |                  |               |      | TIM5_CH3    |              |             |
+|               |    |                  |               |      | TIM9_CH1    |              |             |
+|               |    |                  |               |      | USART2_TX   |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_4  | 9  | MICRO_ADC_IN3    | WICED_GPIO_4  | A  3 | ADC123_IN3  |              |             |
+|               |    |                  |               |      | GPIO        |              |             |
+|               |    |                  |               |      | TIM2_CH4    |              |             |
+|               |    |                  |               |      | TIM5_CH4    |              |             |
+|               |    |                  |               |      | TIM9_CH2    |              |             |
+|               |    |                  |               |      | UART2_RX    |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_5  | 10 | MICRO_SPI_SSN    | WICED_GPIO_5  | A  4 | ADC12_IN4   | ENA_R        |             |
+|               |    |                  |               |      | DAC1_OUT    | ENB_R        |             |
+|               |    |                  |               |      | GPIO        |              |             |
+|               |    |                  |               |      | I2S3_WS     |              |             |
+|               |    |                  |               |      | SPI1_NSS    |              |             |
+|               |    |                  |               |      | SPI3_NSS    |              |             |
+|               |    |                  |               |      | USART2_CK   |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_6  | 11 | MICRO_SPI_SSN    | WICED_GPIO_6  | A  5 | ADC12_IN5   | INB_R        |             |
+|               |    |                  |               |      | DAC2_OUT    |              |             |
+|               |    |                  |               |      | GPIO        |              |             |
+|               |    |                  |               |      | SPI1_SCK    |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_7  | 12 | MICRO_SPI_MOSI   | WICED_GPIO_7  | A  7 | ADC12_IN7   |              |             |
+|               |    |                  |               |      | GPIO        |              |             |
+|               |    |                  |               |      | SPI1_MOSI   |              |             |
+|               |    |                  |               |      | TIM1_CH1N   |              |             |
+|               |    |                  |               |      | TIM3_CH2    |              |             |
+|               |    |                  |               |      | TIM8_CH1N   |              |             |
+|               |    |                  |               |      | TIM14_CH1   |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_8  | 32 | MICRO_UART_TX    | WICED_GPIO_8  | A  9 | GPIO        | INA_L        |             |
+|               |    |                  |               |      | I2C3_SMBA   |              |             |
+|               |    |                  |               |      | TIM1_CH2    |              |             |
+|               |    |                  |               |      | USART1_TX   |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_9  | 33 | MICRO_UART_RX    | WICED_GPIO_9  | A 10 | GPIO        | INB_L        |             |
+|               |    |                  |               |      | TIM1_CH3    |              |             |
+|               |    |                  |               |      | USART1_RX   |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_10 | 34 | MICRO_JTAG_TMS   | WICED_GPIO_10 | A 11 | GPIO        | INA_R        |             |
+|               |    |                  |               |      | USART1_CTS  |              |             |
+|               |    |                  |               |      | USB2_DM     |              |             |
+|               |    |                  |               |      | CAN_RX      |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_11 | 35 | MICRO_JTAG_TDI   | WICED_GPIO_11 | A 12 | GPIO        | INB_R        |             |
+|               |    |                  |               |      | USART1_RTS  |              |             |
+|               |    |                  |               |      | USB2_DP     |              |             |
+|               |    |                  |               |      | CAN_TX      |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_18 | 43 | MICRO_GPIO_0     | WICED_GPIO_18 | B  6 | GPIO        | SCL_M        |             |
+|               |    |                  |               |      | TIM4_CH1    |              |             |
+|               |    |                  |               |      | I2C1_SCL    |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_19 | 44 | MICRO_GPIO_1     | WICED_GPIO_19 | B  7 | GPIO        | SDA_M        |             |
+|               |    |                  |               |      | TIM4_CH2    |              |             |
+|               |    |                  |               |      | I2C1_SDA    |              |             |
+|---------------+----+------------------+---------------+------+-------------+--------------+-------------|
+| WICED_GPIO_20 | 46 | MICRO_SPI_MISO   | WICED_GPIO_20 | A  6 | ADC12_IN6   | CS_L         |             |
+|               |    |                  |               |      | GPIO        |              |             |
+|               |    |                  |               |      | SPI1_MISO   |              |             |
+|               |    |                  |               |      | TIM1_BKIN   |              |             |
+|               |    |                  |               |      | TIM3_CH1    |              |             |
+|               |    |                  |               |      | TIM8_BKIN   |              |             |
+|               |    |                  |               |      | TIM13_CH1   |              |             |
++---------------+----+------------------+------+---------------+-------------+--------------+-------------+
+*/
 
 /******************************************************
  *                 Type Definitions
@@ -63,6 +154,7 @@ wiced_result_t scan_result_handler( wiced_scan_handler_result_t* malloced_scan_r
 static wiced_ip_address_t get_broadcast_address();
 extern wiced_result_t wiced_ip_up( wiced_interface_t interface, wiced_network_config_t config, const wiced_ip_setting_t* ip_settings );
 static void connection_established();
+static void gpio_init();
 
 /******************************************************
  *               Variables Definitions
@@ -71,9 +163,9 @@ static void connection_established();
 #ifndef STA_INTERFACE
 static const wiced_ip_setting_t device_init_ip_settings =
 {
-    INITIALISER_IPV4_ADDRESS( .ip_address, MAKE_IPV4_ADDRESS(192,168,  2,  1) ),
+    INITIALISER_IPV4_ADDRESS( .ip_address, MAKE_IPV4_ADDRESS(192,168,  1,  1) ),
     INITIALISER_IPV4_ADDRESS( .netmask,    MAKE_IPV4_ADDRESS(255,255,255,  0) ),
-    INITIALISER_IPV4_ADDRESS( .gateway,    MAKE_IPV4_ADDRESS(192,168,  2,  1) ),
+    INITIALISER_IPV4_ADDRESS( .gateway,    MAKE_IPV4_ADDRESS(192,168,  1,  1) ),
 };
 #endif
 
@@ -101,7 +193,7 @@ uint16_t prev_acc, prev_vel;
 const network known_networks[] =
 {
     /* Dummy network */
-    { .ssid = "INSERT_SSID", .passphrase = "INSERT_PASSPHRASE" }
+    { .ssid = "InfostradaWiFi-f668f7", .passphrase = "timavo10d" }
 };
 
 /******************************************************
@@ -112,17 +204,7 @@ void application_start(void)
 {
     /* Initialize the device and WICED framework */
     wiced_init( );
-
-    /* Initialize GPIO and PWM peripherals */
-    /* TODO: Change dummy duty cycle to 0.0 */
-    wiced_gpio_init(WICED_GPIO_8, OUTPUT_PUSH_PULL);
-    wiced_gpio_init(WICED_GPIO_9, OUTPUT_PUSH_PULL);
-    //wiced_pwm_init(WICED_PWM_3, 20000, 30.0);
-
-    /* TODO: Remove (for testing purposes) */
-    wiced_gpio_output_low(WICED_GPIO_8);
-    wiced_gpio_output_low(WICED_GPIO_9);
-    //wiced_pwm_start(WICED_PWM_3);
+    gpio_init( );
 
 #ifndef STA_INTERFACE
     wiced_network_up( WICED_AP_INTERFACE, WICED_USE_INTERNAL_DHCP_SERVER, &device_init_ip_settings );
@@ -131,6 +213,30 @@ void application_start(void)
     wiced_wifi_scan_networks(scan_result_handler, NULL);
 #endif
 
+}
+
+void gpio_init(){
+    /* Initialize GPIO and PWM peripherals */
+    /* TODO: Change dummy duty cycle to 0.0 */
+    //wiced_gpio_init(WICED_GPIO_5, OUTPUT_PUSH_PULL);        /* ENA_R | ENB_R */
+    wiced_gpio_init(INA_R, OUTPUT_PUSH_PULL);        /* INB_R */
+    wiced_gpio_init(INB_R, OUTPUT_PUSH_PULL);       /* INA_R */
+    wiced_pwm_init(PWM_R, 20000, 0.0);             /* PWM_R */
+
+    //wiced_gpio_init(WICED_GPIO_9, OUTPUT_PUSH_PULL);        /* ENA_L | ENB_L */
+    wiced_gpio_init(INA_L, OUTPUT_PUSH_PULL);               /* INA_L */
+    wiced_gpio_init(INB_L, OUTPUT_PUSH_PULL);               /* INB_L */
+    wiced_pwm_init(PWM_L, 20000, 0.0);                      /* PWM_L */
+
+    /* TODO: Remove (for testing purposes) */
+    wiced_gpio_output_low(INA_R);
+    wiced_gpio_output_low(INB_R);
+    //wiced_gpio_output_low(WICED_GPIO_11);
+    wiced_pwm_start(PWM_R);
+
+    wiced_gpio_output_low(INA_L);
+    wiced_gpio_output_low(INB_L);
+    wiced_pwm_start(PWM_L);
 }
 
 static void connection_established(){
@@ -161,11 +267,8 @@ static void connection_established(){
                                      0
                                    );
 
-    wiced_gpio_output_high(WICED_GPIO_8);
-
     udp_printf("Waiting for UDP packets ...");
 }
-
 
 wiced_result_t process_received_udp_packet()
 {
@@ -185,7 +288,7 @@ wiced_result_t process_received_udp_packet()
     }
     else
     {
-        wiced_gpio_output_low(WICED_GPIO_8);
+        //wiced_gpio_output_low(WICED_GPIO_8);
 
         udp_printf("Packet received");
 
@@ -236,12 +339,37 @@ wiced_result_t process_received_udp_packet()
 		{
 		    uint16_t curr_acc, curr_vel;
 
-		    curr_acc = ((uint16_t *) rx_data)[0];
-		    curr_vel = ((uint16_t *) rx_data)[1];
+		    curr_acc = ntohs(((uint16_t *) rx_data)[0]);
+		    curr_vel = ntohs(((uint16_t *) rx_data)[1]);
+
+		    float pwm_f = (curr_vel & 0x7fff) / 32767.0f * 100;
+
+		    if (0x8000 & curr_vel)
+		    {
+                wiced_gpio_output_low(INA_L);
+                wiced_gpio_output_high(INB_L);
+                wiced_gpio_output_low(INA_R);
+                wiced_gpio_output_high(INB_R);
+		    }
+		    else
+		    {
+		        pwm_f = 100.0f - pwm_f;
+                wiced_gpio_output_high(INA_L);
+                wiced_gpio_output_low(INB_L);
+                wiced_gpio_output_high(INA_R);
+                wiced_gpio_output_low(INB_R);
+		    }
+
+            wiced_pwm_stop(PWM_L);
+            wiced_pwm_init(PWM_L, 20000, pwm_f);
+            wiced_pwm_start(PWM_L);
+            wiced_pwm_stop(PWM_R);
+            wiced_pwm_init(PWM_R, 20000, pwm_f);
+            wiced_pwm_start(PWM_R);
 
 #ifdef DEBUG
-	        sprintf(debug_message, "[%d bytes] RAW: %4s | Acc: %" PRIu16 " | Vel: %" PRIu16,
-	                rx_data_length, rx_data, ntohs(curr_acc), ntohs(curr_vel)
+	        sprintf(debug_message, "[%d bytes] RAW: %4s | Acc: %" PRIu16 " | Vel: %" PRIu16 " | PWM: %.1f",
+	                rx_data_length, rx_data, curr_acc, curr_vel, pwm_f
 	                );
 		    udp_printf(debug_message);
 #endif
@@ -253,7 +381,7 @@ wiced_result_t process_received_udp_packet()
 		/* Delete the received packet, it is no longer needed */
 		wiced_packet_delete(packet);
 
-        wiced_gpio_output_high(WICED_GPIO_8);
+        //wiced_gpio_output_high(WICED_GPIO_8);
     }
 
 	return WICED_SUCCESS;
