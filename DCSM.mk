@@ -10,7 +10,10 @@
 
 NAME := ProjectDCSM
 
-$(NAME)_SOURCES := app.c
+$(NAME)_SOURCES := 	app.c \
+					control_loop_data.c \
+					control_loop.c
+					
 $(NAME)_COMPONENTS := daemons/gedday
 
 WIFI_CONFIG_DCT_H := wifi_config_dct.h
