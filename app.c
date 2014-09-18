@@ -319,7 +319,6 @@ void gpio_init(){
     wiced_gpio_init(INB_L, OUTPUT_PUSH_PULL);               /* INB_L */
     wiced_pwm_init(PWM_L, 20000, 0.0);                      /* PWM_L */
 
-    /* TODO: Remove (for testing purposes) */
     wiced_gpio_output_low(INA_R);
     wiced_gpio_output_low(INB_R);
     wiced_pwm_start(PWM_R);
@@ -484,7 +483,7 @@ wiced_result_t control_loop()
     wiced_pwm_init(PWM_R, 20000.0f, PWM_r);
     wiced_pwm_start(PWM_R);
 
-    /* Update log buffer with the current values */
+    /* Update log buffer with current values */
     if (log_stored_msg < ((LOG_SERVICE_TIMEOUT / CTRL_LOOP_TIMEOUT) * 4) - 4)
     {
         log_buffer[log_stored_msg++] = V_l;
