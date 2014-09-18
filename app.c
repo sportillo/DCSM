@@ -235,6 +235,7 @@ const network known_networks[] =
 
 void application_start(void)
 {
+	/* Initialize variables (MAX_uint32_T used to represent large numbers) */
     Vd = 0.0f;
     Rd = (real_T) MAX_uint32_T;
     T_edge_l = (real_T) MAX_uint32_T;
@@ -299,7 +300,7 @@ void application_start(void)
                                      0
                                    );
 #endif
-    /* Register a function to process received UDP packets */
+    /* Register a function to process received UDP packets (50ms) */
     wiced_rtos_register_timed_event( &process_udp_rx_event,
                                      WICED_NETWORKING_WORKER_THREAD,
                                      &process_received_udp_packet,
@@ -340,6 +341,7 @@ void timer_init(){
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE);
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
 
+    /* Configure TIM1 and TIM4 with a 30ms period */
     TIM_TBInitStructure.TIM_Period = 29999;
     TIM_TBInitStructure.TIM_Prescaler = 71;
     TIM_TBInitStructure.TIM_ClockDivision = TIM_CKD_DIV1;
@@ -348,6 +350,7 @@ void timer_init(){
     TIM_TimeBaseInit(TIM4, &TIM_TBInitStructure);
     TIM_TimeBaseInit(TIM1, &TIM_TBInitStructure);
 
+    /* Enable interruptions from TIM1 and TIM4 upon timeout */
     NVIC_InitStructure.NVIC_IRQChannel                   = TIM1_UP_TIM10_IRQn;
     NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = (uint8_t) 0xE;
     NVIC_InitStructure.NVIC_IRQChannelSubPriority        = 0xC;
@@ -361,6 +364,7 @@ void timer_init(){
     TIM_ITConfig(TIM1, TIM_IT_Update, ENABLE);
     TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
 
+    /* Enable interruptions from pin ENC_L and ENC_R upon rising edge */
     wiced_gpio_input_irq_enable(ENC_L, IRQ_TRIGGER_RISING_EDGE, irq_handler_l, 0);
     wiced_gpio_input_irq_enable(ENC_R, IRQ_TRIGGER_RISING_EDGE, irq_handler_r, 0);
 
@@ -374,6 +378,7 @@ void TIM4_irq ()
     {
         TIM_ClearITPendingBit(TIM4, TIM_IT_Update);
 
+        /* Set right wheels' status to stopped */
         Moving_r = 0;
         elapsed_count_r = 0;
         elapsed_r = 0;
@@ -388,6 +393,7 @@ void TIM1_UP_irq ()
     {
         TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
 
+        /* Set left wheels' status to stopped */
         Moving_l = 0;
         elapsed_count_l = 0;
         elapsed_l = 0;
@@ -401,6 +407,8 @@ void irq_handler_l (void *arg)
     uint32_t us;
     us = TIM_GetCounter(TIM1);
 
+    /* Increment elapsed time and sample number to
+       compute the average period */
     elapsed_l += us;
     elapsed_count_l ++;
     Moving_l = 1;
@@ -413,6 +421,8 @@ void irq_handler_r (void *arg)
     uint32_t us;
     us = TIM_GetCounter(TIM4);
 
+    /* Increment elapsed time and sample number to
+       compute the average period */
     elapsed_r += us;
     elapsed_count_r ++;
     Moving_r = 1;
@@ -434,6 +444,7 @@ wiced_result_t control_loop()
         T_edge_r = ((real_T) elapsed_r) / elapsed_count_r;
     }
 
+    /* Pass values to the MATLAB model */
     control_loop_U.Vd = Vd;
     control_loop_U.Rd = Rd;
     control_loop_U.T_edge_l = T_edge_l;
@@ -448,6 +459,7 @@ wiced_result_t control_loop()
 
     control_loop_step();
 
+    /* Read output values and issue commands */
     V_l = control_loop_Y.V_l;
     V_r = control_loop_Y.V_r;
     PWM_l = control_loop_Y.PWM_l;
@@ -507,7 +519,7 @@ static void connection_established(){
     if (wiced_udp_create_socket(&udp_data_socket, DATA_PORT, ACTIVE_INTERFACE) != WICED_SUCCESS ||
         wiced_udp_create_socket(&udp_debug_socket, DEBUG_PORT, ACTIVE_INTERFACE) != WICED_SUCCESS)
     {
-        /* TODO: halt */
+    	/* Unspecified behaviour */
     }
 
     publish_service();
@@ -543,12 +555,7 @@ static wiced_result_t log_service ()
 {
     char log_message[LOG_BUFFER_SIZE * sizeof(real_T)];
 
-    /*
-    sprintf(log_message, "[%d bytes] RAW: %4s | Acc: %" PRIu16 " | Vel: %" PRIu16 " | Ref. vel.: %.1f",
-            rx_data_length, rx_data, acc, vel, v_ref
-            );
-     */
-
+    /* Copy the log in a temporary buffer and send it */
     memcpy(log_message, log_buffer, (log_stored_msg) * sizeof(real_T));
     udp_printf(log_message, (log_stored_msg) * sizeof(real_T));
 
@@ -579,8 +586,6 @@ wiced_result_t process_received_udp_packet()
 
         if (rx_data_length == 0)
         {
-            /* TODO: Prevents crashing */
-
             /* Delete the received packet, it is no longer needed */
             wiced_packet_delete(packet);
 
@@ -595,11 +600,6 @@ wiced_result_t process_received_udp_packet()
 		   strncmp(rx_data, "scan", 4) == 0)
 		{
 		    wiced_wifi_scan_networks(scan_result_handler, NULL);
-		}
-		else if(rx_data_length >= 8 &&
-		        strncmp(rx_data, "ifconfig", 8) == 0)
-		{
-
 		}
 		else if (rx_data_length == 4)
 		{
@@ -718,11 +718,6 @@ static wiced_result_t udp_printf (char* buffer, uint16_t length)
     {
         wiced_packet_delete(packet);  /* Delete packet, since the send failed */
     }
-
-    /*
-     * NOTE : It is not necessary to delete the packet created above, the packet
-     *        will be automatically deleted *AFTER* it has been successfully sent
-     */
 
     return WICED_SUCCESS;
 }
